@@ -1,0 +1,14 @@
+**/.venv
+**/node_modules
+**/.next
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+data/*.db
+data/chroma
+.git
+*.md
+!knowledge/**
+frontend/.env*
+.env
+models_cache

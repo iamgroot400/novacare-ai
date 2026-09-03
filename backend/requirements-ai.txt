@@ -1,0 +1,6 @@
+# Heavy AI stack — agent + RAG. Installed in the Docker image (python 3.11).
+langgraph>=0.2.60,<2
+langchain-core>=0.3.28
+langchain-ollama>=0.2.2
+chromadb>=0.5.20,<0.6
+sentence-transformers>=3.0,<4
