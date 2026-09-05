@@ -1,4 +1,8 @@
 # Heavy AI stack — agent + RAG. Installed in the Docker image (python 3.11).
+# CPU-only torch keeps the image small and works without a GPU.
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+torch==2.4.1+cpu
 langgraph>=0.2.60,<2
 langchain-core>=0.3.28
 langchain-ollama>=0.2.2

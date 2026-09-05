@@ -1,0 +1,4 @@
+# Full-duplex WebRTC voice (best-effort). If this fails to resolve, the voice
+# service still runs and the browser uses the push-to-talk fallback.
+pipecat-ai[silero,webrtc]==0.0.53
+aiortc==1.9.0
