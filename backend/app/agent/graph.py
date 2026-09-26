@@ -23,10 +23,22 @@ def strip_reasoning(text: str) -> str:
     return text.strip()
 
 
-def _build_llm() -> ChatGroq:
+def _groq(model: str) -> ChatGroq:
     extra = {"reasoning_effort": settings.groq_reasoning_effort} if settings.groq_reasoning_effort else {}
-    return ChatGroq(model=settings.groq_model, api_key=settings.groq_api_key or None, temperature=0.2,
-                    max_tokens=settings.groq_max_tokens, **extra)
+    return ChatGroq(model=model, api_key=settings.groq_api_key or None, temperature=0.2,
+                    max_tokens=settings.groq_max_tokens, max_retries=1, **extra)
+
+
+def _build_llm():
+    # Groq's free tier caps each model at 200k tokens/day; once the main model is out, every
+    # turn failed instantly. Each model has its own quota, so retry the turn on the fallback.
+    llm = _groq(settings.groq_model)
+    if settings.groq_fallback_model:
+        from groq import RateLimitError
+
+        llm = llm.with_fallbacks([_groq(settings.groq_fallback_model)],
+                                 exceptions_to_handle=(RateLimitError,))
+    return llm
 
 
 @lru_cache

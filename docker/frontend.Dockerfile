@@ -16,7 +16,9 @@ RUN npm run build
 
 FROM node:20-slim AS runner
 WORKDIR /app
-ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1
+# HOSTNAME: Next's standalone server binds to $HOSTNAME, which Docker sets to the container id,
+# so localhost (the healthcheck) couldn't reach it and the container showed as unhealthy.
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./

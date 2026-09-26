@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     # LLM (Groq hosted, free tier)
     groq_api_key: str = ""
     groq_model: str = "openai/gpt-oss-120b"  # best Nepali of the Groq models tested
+    groq_fallback_model: str = "openai/gpt-oss-20b"  # used when the main model hits a rate limit
     # Free tier: ~8k tokens/min and (qwen) 1k output tokens/min, so keep replies and reasoning small.
     groq_max_tokens: int = 700
     groq_reasoning_effort: str = "low"  # gpt-oss: low|medium|high; qwen: none|default; "" = don't send

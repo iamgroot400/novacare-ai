@@ -133,6 +133,7 @@ All settings live in `.env` (copy `.env.example`). Only `GROQ_API_KEY` is requir
 | --- | --- | --- |
 | `GROQ_API_KEY` | (none) | Required. Used for the LLM, speech-to-text and English TTS. |
 | `GROQ_MODEL` | `openai/gpt-oss-120b` | Chat model. It had the most natural Nepali of the Groq models tested. |
+| `GROQ_FALLBACK_MODEL` | `openai/gpt-oss-20b` | Used automatically when `GROQ_MODEL` hits a rate limit (each model has its own daily quota). |
 | `GROQ_REASONING_EFFORT` | `low` | `low`/`medium`/`high` for gpt-oss; `none`/`default` for qwen; empty = not sent. |
 | `GROQ_STT_MODEL` | `whisper-large-v3` | Better on Nepali than `-turbo`. |
 | `STT_LANGUAGE` | empty | Empty auto-detects; `ne` or `en` pins the language. |
@@ -186,7 +187,9 @@ Twilio bills calls per minute; check its pricing for your destination.
 
 ## Free-tier limits
 
-Groq's free tier allows **8,000 tokens per minute** and **1,000 requests per day** per model.
+Groq's free tier allows **8,000 tokens per minute**, **200,000 tokens per day** and
+**1,000 requests per day** per model. When the main model runs out, turns fall back to
+`GROQ_FALLBACK_MODEL`, which has its own quota.
 A reply without tools uses about 1,300 tokens and one with a tool call about 3,000, so a
 busy call can hit the per-minute limit. The client then waits and retries, and the caller hears the
 filler phrase. The prompt, history (10 messages) and knowledge-base results (3 passages)
