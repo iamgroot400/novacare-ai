@@ -2,8 +2,10 @@
 
 Each sentence is routed by script (Devanagari -> Nepali, else English) and tried down a
 provider chain, so a rate limit or outage degrades voice quality instead of ending the call:
-  English: Groq -> Edge neural -> Piper
-  Nepali:  Edge neural -> Piper
+  English: ElevenLabs (if configured) -> Groq -> Edge neural -> Piper
+  Nepali:  ElevenLabs (if configured) -> Edge neural -> Piper
+Consecutive sentences in the same language are voiced as ONE phrase, so intonation flows
+across them instead of restarting every sentence.
 """
 from __future__ import annotations
 
@@ -33,6 +35,17 @@ def is_nepali(text: str) -> bool:
 
 def sentences(text: str) -> list[str]:
     return [s.strip() for s in _SENTENCES.split((text or "").strip()) if s.strip()]
+
+
+def phrases(text: str) -> list[str]:
+    """Sentences joined into runs of the same language (a voice switch needs a new request)."""
+    out: list[str] = []
+    for s in sentences(text):
+        if out and is_nepali(out[-1]) == is_nepali(s):
+            out[-1] += " " + s
+        else:
+            out.append(s)
+    return out
 
 
 # ─── Making Nepali text speakable ───────────────────────────────────────
@@ -114,6 +127,22 @@ def _read_wav(data: bytes) -> np.ndarray:
         return resample(pcm, w.getframerate())
 
 
+def _eleven(text: str) -> np.ndarray:
+    """ElevenLabs (eleven_v3 speaks Nepali): the most human-sounding option, paid beyond the
+    free allowance. Used only when both ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID are set."""
+    if not (config.elevenlabs_api_key and config.elevenlabs_voice_id):
+        raise RuntimeError("ElevenLabs not configured")
+    r = httpx.post(
+        f"https://api.elevenlabs.io/v1/text-to-speech/{config.elevenlabs_voice_id}",
+        params={"output_format": "pcm_24000"},
+        headers={"xi-api-key": config.elevenlabs_api_key},
+        json={"text": text, "model_id": config.elevenlabs_model},
+        timeout=30,
+    )
+    r.raise_for_status()
+    return resample(np.frombuffer(r.content, dtype="<i2").astype("float32") / 32768, 24000)
+
+
 def _groq(text: str) -> np.ndarray:
     r = httpx.post(
         "https://api.groq.com/openai/v1/audio/speech",
@@ -136,7 +165,7 @@ def _edge(text: str) -> np.ndarray:
 
     async def fetch() -> bytes:
         out = b""
-        async for c in edge_tts.Communicate(text, _edge_voice(text)).stream():
+        async for c in edge_tts.Communicate(text, _edge_voice(text), rate=config.edge_rate).stream():
             if c["type"] == "audio":
                 out += c["data"]
         return out
@@ -180,7 +209,7 @@ def warm(phrases: list[str]) -> None:
 
 
 def _chain(text: str):
-    return (_edge, _piper) if is_nepali(text) else (_groq, _edge, _piper)
+    return (_eleven, _edge, _piper) if is_nepali(text) else (_eleven, _groq, _edge, _piper)
 
 
 def _speak(text: str) -> np.ndarray:
@@ -190,20 +219,17 @@ def _speak(text: str) -> np.ndarray:
         try:
             return provider(text)
         except Exception as exc:  # noqa: BLE001
-            log.warning("TTS %s failed (%s); trying next", provider.__name__, exc)
+            if provider is not _eleven or config.elevenlabs_api_key:  # unconfigured: skip quietly
+                log.warning("TTS %s failed (%s); trying next", provider.__name__, exc)
     return np.zeros(0, dtype="float32")
 
 
 def synthesize(text: str) -> np.ndarray:
-    """float32 mono at config.sample_rate. Mixed Nepali/English text is voiced sentence by sentence."""
-    parts = sentences(text)
+    """float32 mono at config.sample_rate, one request per same-language phrase."""
+    parts = phrases(text)
     if not parts:
         return np.zeros(0, dtype="float32")
-    gap = np.zeros(int(config.sample_rate * 0.12), dtype="float32")  # short natural pause
-    out: list[np.ndarray] = []
-    for s in parts:
-        out += [_cache[s] if s in _cache else _speak(s), gap]
-    return np.concatenate(out)
+    return np.concatenate([_cache[p] if p in _cache else _speak(p) for p in parts])
 
 
 def synthesize_wav(text: str) -> bytes:

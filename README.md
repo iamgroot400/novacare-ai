@@ -139,6 +139,8 @@ All settings live in `.env` (copy `.env.example`). Only `GROQ_API_KEY` is requir
 | `STT_LANGUAGE` | empty | Empty auto-detects; `ne` or `en` pins the language. |
 | `GROQ_TTS_MODEL` / `GROQ_TTS_VOICE` | `canopylabs/orpheus-v1-english` / `autumn` | English voice. Groq requires accepting this model's terms in its console first; until then Edge is used. |
 | `EDGE_VOICE_NE` | `ne-NP-HemkalaNeural` | Nepali voice (female). `ne-NP-SagarNeural` is male. |
+| `ELEVENLABS_API_KEY` / `ELEVENLABS_VOICE_ID` | empty | Optional. The most human-sounding voice: ElevenLabs `eleven_v3` speaks Nepali. Used first when both are set; Edge is the fallback. |
+| `EDGE_RATE` | `+0%` | Speaking speed of the Edge voices, e.g. `-10%`. |
 | `EDGE_VOICE_EN` | `en-US-AriaNeural` | English fallback voice. |
 | `VAD_STOP_SECS` | `0.6` | Silence before the agent replies. Lower is snappier; higher cuts people off less. |
 | `FILLER_AFTER_SECS` | `1.2` | How long before a slow turn gets a filler phrase. |

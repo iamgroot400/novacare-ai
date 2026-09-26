@@ -136,9 +136,9 @@ class NovaCareAgentProcessor(FrameProcessor):  # type: ignore[misc]
                 reply = spoken = AGENT_DOWN[lang]
             if self._on_event:
                 await self._on_event({"kind": "ai_transcript", "text": reply})
-            # One frame per sentence: TTS voices sentence 1 while the rest queue, so speech starts sooner.
-            for sentence in tts.sentences(spoken):
-                await self.push_frame(TextFrame(sentence))
+            # One frame per same-language phrase: continuous intonation within a language.
+            for phrase in tts.phrases(spoken):
+                await self.push_frame(TextFrame(phrase))
             await self.push_frame(LLMFullResponseEndFrame())
             return
 
@@ -165,7 +165,7 @@ def warm_tts() -> None:
 
     fixed = [*FILLER.values(), *AGENT_DOWN.values(), BROWSER_GREETING, PHONE_GREETING,
              *(p for lang in _T.values() for p in lang.values() if "{" not in p)]
-    tts.warm([s for p in fixed for s in tts.sentences(p)])
+    tts.warm([ph for p in fixed for ph in tts.phrases(p)])
 
 
 def _vad():
@@ -193,7 +193,7 @@ async def _run(transport, conversation_id: str, out_rate: int, in_rate: int, on_
         if greeting:
             import tts
 
-            await task.queue_frames([TextFrame(s) for s in tts.sentences(greeting)])
+            await task.queue_frames([TextFrame(p) for p in tts.phrases(greeting)])
 
     @transport.event_handler("on_client_disconnected")
     async def _on_disconnected(_t, _client):  # noqa: ANN001

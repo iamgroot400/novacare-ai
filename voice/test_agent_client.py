@@ -32,8 +32,17 @@ def test_warmed_phrases_are_not_resynthesized(monkeypatch):
     monkeypatch.setattr(tts, "_speak", lambda t: calls.append(t) or np.ones(10, dtype="float32"))
     monkeypatch.setattr(tts, "_cache", {})
     tts.warm(["एकछिन पर्खनुहोला, म हेर्दैछु।"])
-    tts.synthesize("एकछिन पर्खनुहोला, म हेर्दैछु। नयाँ वाक्य।")
-    assert calls == ["एकछिन पर्खनुहोला, म हेर्दैछु।", "नयाँ वाक्य।"]  # warm once, then only the new one
+    tts.synthesize("एकछिन पर्खनुहोला, म हेर्दैछु।")
+    tts.synthesize("नयाँ वाक्य। अर्को वाक्य।")
+    # warmed once, then served from cache; the new reply is one request for both sentences
+    assert calls == ["एकछिन पर्खनुहोला, म हेर्दैछु।", "नयाँ वाक्य। अर्को वाक्य।"]
+
+
+def test_phrases_group_by_language():
+    from tts import phrases
+
+    assert phrases("नमस्ते! के सहयोग चाहियो? You can speak English too. धन्यवाद।") == [
+        "नमस्ते! के सहयोग चाहियो?", "You can speak English too.", "धन्यवाद।"]
 
 
 def test_nepali_text_is_made_speakable():

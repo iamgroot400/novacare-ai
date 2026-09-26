@@ -34,9 +34,14 @@ class VoiceConfig:
     piper_voice_ne: str = os.getenv("PIPER_VOICE_NE", "ne_NP-google-medium")
     edge_voice_ne: str = os.getenv("EDGE_VOICE_NE", "ne-NP-HemkalaNeural")
     edge_voice_en: str = os.getenv("EDGE_VOICE_EN", "en-US-AriaNeural")
+    edge_rate: str = os.getenv("EDGE_RATE", "+0%")  # e.g. "-10%" speaks a little slower
     vad_stop_secs: float = float(os.getenv("VAD_STOP_SECS", "0.6"))
     # If the agent hasn't answered after this long (a tool is running), say a short filler.
     filler_after_secs: float = float(os.getenv("FILLER_AFTER_SECS", "1.2"))
+    # ElevenLabs: most human-sounding (eleven_v3 speaks Nepali). Needs both key and voice id.
+    elevenlabs_api_key: str = os.getenv("ELEVENLABS_API_KEY", "")
+    elevenlabs_voice_id: str = os.getenv("ELEVENLABS_VOICE_ID", "")
+    elevenlabs_model: str = os.getenv("ELEVENLABS_MODEL", "eleven_v3")
     piper_dir: str = os.getenv("PIPER_DIR", "/models_cache/piper")
     sample_rate: int = 24000
     # Phone calls (Twilio). PUBLIC_VOICE_URL empty = auto-discover the cloudflared quick tunnel.

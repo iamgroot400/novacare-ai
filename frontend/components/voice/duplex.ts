@@ -85,7 +85,9 @@ export async function startDuplexCall(opts: {
     const src = ctx.createBufferSource();
     src.buffer = buf;
     src.connect(ctx.destination);
-    playAt = Math.max(playAt, ctx.currentTime + 0.03);
+    // Start (or restart after a gap) 300 ms ahead. Bot audio arrives paced in real time, so
+    // with no cushion any network jitter between the server and the browser is heard as stutter.
+    if (playAt < ctx.currentTime + 0.03) playAt = ctx.currentTime + 0.3;
     src.start(playAt);
     playAt += buf.duration;
     playing.add(src);
