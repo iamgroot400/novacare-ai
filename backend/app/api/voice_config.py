@@ -30,5 +30,5 @@ def get_config():
         demo_date=settings.demo_date,
         ice_servers=ice_servers(),
         voice_url=settings.voice_url,
-        model=settings.ollama_model,
+        model=settings.groq_model,
     )

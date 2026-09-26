@@ -38,7 +38,10 @@ def _dump(obj) -> str:
 
 
 # ─── READ tools ────────────────────────────────────────────────────────
-def _search_knowledge_base(query: str, top_k: int = 4) -> str:
+def _search_knowledge_base(query: str, top_k: int = 3) -> str:
+    # The result is resent on every later LLM call in the turn, so cap it: 3 passages,
+    # clamped here rather than in the schema (a schema error would cost a retry call).
+    top_k = min(top_k, 3)
     ctx = current()
     ctx.emitter.tool_started("search_knowledge_base", f"Searching the knowledge base for “{query}”")
     rag = get_rag()
@@ -58,11 +61,7 @@ def _search_knowledge_base(query: str, top_k: int = 4) -> str:
     )
     return _dump({
         "query": query,
-        "results": [
-            {"source": c.source, "section": c.section, "document_type": c.document_type,
-             "score": c.score, "text": c.text}
-            for c in chunks
-        ],
+        "results": [{"source": c.source, "section": c.section, "text": c.text[:700]} for c in chunks],
     })
 
 

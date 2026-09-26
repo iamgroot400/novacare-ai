@@ -5,9 +5,9 @@ import { useSupport } from "@/components/SupportProvider";
 import { VOICE_BASE } from "@/lib/api";
 import { Waveform } from "./Waveform";
 
-type CallState = "requesting" | "ready" | "recording" | "thinking" | "speaking" | "error";
+type CallState = "requesting" | "ready" | "live" | "recording" | "thinking" | "speaking" | "error";
 
-export function VoiceCall({ onClose }: { onClose: () => void }) {
+export function VoiceCall({ onClose, inline = false }: { onClose: () => void; inline?: boolean }) {
   const { convo, openChat } = useSupport();
   const [state, setState] = useState<CallState>("requesting");
   const [error, setError] = useState("");
@@ -21,6 +21,8 @@ export function VoiceCall({ onClose }: { onClose: () => void }) {
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+  const pcRef = useRef<RTCPeerConnection | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval>>();
 
   const stopEverything = useCallback(() => {
@@ -28,7 +30,41 @@ export function VoiceCall({ onClose }: { onClose: () => void }) {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     if (timerRef.current) clearInterval(timerRef.current);
     audioRef.current?.pause();
+    pcRef.current?.close();
   }, []);
+
+  // Full-duplex: mic streams to the server continuously, server VAD detects turns and barge-in.
+  const connectDuplex = async (stream: MediaStream, iceServers: RTCIceServer[]) => {
+    const pc = new RTCPeerConnection({ iceServers });
+    pcRef.current = pc;
+    stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+    pc.ontrack = (e) => {
+      if (remoteAudioRef.current) remoteAudioRef.current.srcObject = e.streams[0];
+    };
+    pc.onconnectionstatechange = () => {
+      if (["failed", "disconnected", "closed"].includes(pc.connectionState)) setState("error");
+    };
+    await pc.setLocalDescription(await pc.createOffer());
+    // non-trickle ICE: wait for gathering (max 3s) so the offer carries all candidates
+    await new Promise<void>((resolve) => {
+      if (pc.iceGatheringState === "complete") return resolve();
+      const done = () => pc.iceGatheringState === "complete" && resolve();
+      pc.addEventListener("icegatheringstatechange", done);
+      setTimeout(resolve, 3000);
+    });
+    const res = await fetch(`${VOICE_BASE}/api/voice/offer`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sdp: pc.localDescription!.sdp,
+        type: pc.localDescription!.type,
+        conversation_id: convo.conversationId,
+      }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const answer = await res.json();
+    await pc.setRemoteDescription({ type: answer.type, sdp: answer.sdp });
+  };
 
   useEffect(() => {
     (async () => {
@@ -40,6 +76,16 @@ export function VoiceCall({ onClose }: { onClose: () => void }) {
         try {
           const cfg = await fetch(`${VOICE_BASE}/api/voice/config`).then((r) => r.json());
           setFullDuplex(Boolean(cfg.full_duplex));
+          if (cfg.full_duplex) {
+            try {
+              await connectDuplex(stream, cfg.ice_servers ?? []);
+              setState("live");
+              return;
+            } catch {
+              pcRef.current?.close();
+              setFullDuplex(false); // fall back to push-to-talk
+            }
+          }
         } catch {
           setFullDuplex(false);
         }
@@ -53,6 +99,14 @@ export function VoiceCall({ onClose }: { onClose: () => void }) {
     return stopEverything;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Live mode: the server owns the turns, so mirror the conversation as captions.
+  useEffect(() => {
+    if (state !== "live") return;
+    const id = setInterval(() => void convo.refresh(), 2000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, convo.conversationId]);
 
   useEffect(() => {
     streamRef.current?.getAudioTracks().forEach((t) => (t.enabled = !muted));
@@ -110,10 +164,12 @@ export function VoiceCall({ onClose }: { onClose: () => void }) {
     }
   };
 
+  const lastOf = (role: string) => convo.messages.filter((m) => m.role === role).slice(-1)[0]?.content;
   const mmss = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
   const statusLabel: Record<CallState, string> = {
     requesting: "Requesting microphone…",
     ready: "Connected — hold the button and speak",
+    live: "Live — just talk. You can interrupt anytime.",
     recording: "Listening…",
     thinking: "Processing voice…",
     speaking: "NovaCare is speaking…",
@@ -121,7 +177,8 @@ export function VoiceCall({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur">
+    <div className={inline ? "flex justify-center py-6" : "fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur"}>
+      <audio ref={remoteAudioRef} autoPlay />
       <div className="card w-full max-w-md overflow-hidden">
         <div className="gradient-hero relative border-b border-slate-200 p-5 dark:border-slate-800">
           <div className="flex items-center justify-between">
@@ -145,18 +202,29 @@ export function VoiceCall({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="p-5">
-          <Waveform stream={streamRef.current} active={state === "recording" || state === "speaking"} />
+          <Waveform stream={streamRef.current} active={state === "recording" || state === "speaking" || state === "live"} />
 
           <div className="mt-4 space-y-3 text-sm">
             <div className="rounded-xl bg-slate-100 p-3 dark:bg-slate-800/60">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">You</p>
-              <p className="min-h-[1.25rem] text-slate-700 dark:text-slate-200">{userText || "—"}</p>
+              <p className="min-h-[1.25rem] text-slate-700 dark:text-slate-200">{(state === "live" ? lastOf("user") : userText) || "—"}</p>
             </div>
             <div className="rounded-xl bg-nova-50 p-3 dark:bg-nova-500/10">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-nova-500">NovaCare</p>
-              <p className="min-h-[1.25rem] text-slate-700 dark:text-slate-100">{aiText || "—"}</p>
+              <p className="min-h-[1.25rem] text-slate-700 dark:text-slate-100">{(state === "live" ? lastOf("assistant") : aiText) || "—"}</p>
             </div>
           </div>
+
+          {convo.pending && (
+            <div className="mt-3 rounded-xl border border-nova-300 p-3 text-xs dark:border-nova-500/40">
+              <p className="font-medium">{convo.pending.summary}</p>
+              <p className="mt-1 text-slate-500">Say “yes” or “no”, or tap:</p>
+              <div className="mt-2 flex gap-2">
+                <button className="btn-primary !px-3 !py-1" onClick={() => void convo.approve()}>Yes</button>
+                <button className="btn-ghost !px-3 !py-1" onClick={() => void convo.reject()}>No</button>
+              </div>
+            </div>
+          )}
 
           {state === "error" && <p className="mt-3 text-xs text-rose-500">{error}</p>}
 
@@ -170,7 +238,7 @@ export function VoiceCall({ onClose }: { onClose: () => void }) {
               {muted ? "🔇" : "🎙️"}
             </button>
 
-            <button
+            {state !== "live" && <button
               onMouseDown={startRecording}
               onMouseUp={stopRecording}
               onMouseLeave={stopRecording}
@@ -186,7 +254,7 @@ export function VoiceCall({ onClose }: { onClose: () => void }) {
               className="btn-primary !h-16 !w-40 select-none text-sm"
             >
               {state === "recording" ? "Release to send" : "Hold to talk"}
-            </button>
+            </button>}
 
             <button
               onClick={() => {

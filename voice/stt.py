@@ -1,66 +1,41 @@
-"""Faster-Whisper speech-to-text (local, no paid API)."""
+"""Groq hosted Whisper speech-to-text for Nepali + English. No local model, ~0 RAM.
+
+Whisper often mislabels Nepali as Hindi (same script). We send a bilingual prompt to bias it
+toward Nepali vocabulary and store terms, and if it still reports Hindi we redo the request
+pinned to Nepali.
+"""
 from __future__ import annotations
 
-import io
-import logging
-import threading
-
-import numpy as np
+import httpx
 
 from config import config
 
-log = logging.getLogger("novacare.voice.stt")
-_model = None
-_lock = threading.Lock()
+# Style/vocabulary primer: Devanagari Nepali + English brand terms customers actually say.
+_PROMPT = (
+    "नमस्ते, म NovaStore को अर्डर NS-1042 बारे सोध्न चाहन्छु। NovaPods Pro, NovaKeys, "
+    "NovaCharge, return, refund, warranty, ticket। मेरो अर्डर कहाँ पुग्यो?"
+)
 
 
-def get_model():
-    global _model
-    if _model is None:
-        with _lock:
-            if _model is None:
-                from faster_whisper import WhisperModel
-
-                log.info("Loading faster-whisper model=%s device=%s", config.whisper_model, config.whisper_device)
-                _model = WhisperModel(
-                    config.whisper_model,
-                    device=config.whisper_device,
-                    compute_type=config.whisper_compute_type,
-                )
-    return _model
-
-
-def transcribe_pcm(pcm: np.ndarray, sample_rate: int = 16000) -> str:
-    """pcm: float32 mono in [-1, 1]."""
-    model = get_model()
-    segments, _info = model.transcribe(pcm, language="en", vad_filter=True, beam_size=1)
-    return " ".join(s.text.strip() for s in segments).strip()
+def _request(data: bytes, filename: str, language: str | None) -> dict:
+    form = {"model": config.groq_stt_model, "response_format": "verbose_json",
+            "temperature": "0", "prompt": _PROMPT}
+    if language:
+        form["language"] = language
+    r = httpx.post(
+        "https://api.groq.com/openai/v1/audio/transcriptions",
+        headers={"Authorization": f"Bearer {config.groq_api_key}"},
+        files={"file": (filename, data)},
+        data=form,
+        timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
 
 
-def transcribe_file(data: bytes) -> str:
-    """Transcribe an uploaded audio file (wav/webm/ogg/mp3). Requires ffmpeg/soundfile."""
-    import soundfile as sf
-
-    try:
-        audio, sr = sf.read(io.BytesIO(data), dtype="float32", always_2d=False)
-    except Exception:
-        # fall back to letting faster-whisper/ffmpeg decode from a temp file
-        import tempfile
-
-        with tempfile.NamedTemporaryFile(suffix=".bin", delete=False) as fh:
-            fh.write(data)
-            path = fh.name
-        model = get_model()
-        segments, _ = model.transcribe(path, language="en", vad_filter=True, beam_size=1)
-        return " ".join(s.text.strip() for s in segments).strip()
-
-    if audio.ndim > 1:
-        audio = audio.mean(axis=1)
-    if sr != 16000:
-        # simple linear resample
-        import math
-
-        target_len = int(math.floor(len(audio) * 16000 / sr))
-        idx = np.linspace(0, len(audio) - 1, target_len).astype(np.int64)
-        audio = audio[idx]
-    return transcribe_pcm(audio.astype("float32"), 16000)
+def transcribe_file(data: bytes, filename: str = "audio.wav") -> str:
+    """Transcribe wav/webm/ogg/mp3 bytes. STT_LANGUAGE pins a language; empty = auto-detect."""
+    res = _request(data, filename, config.stt_language or None)
+    if not config.stt_language and res.get("language") in ("hindi", "hi", "urdu", "ur", "marathi", "mr"):
+        res = _request(data, filename, "ne")
+    return (res.get("text") or "").strip()

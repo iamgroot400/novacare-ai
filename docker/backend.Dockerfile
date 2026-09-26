@@ -13,6 +13,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY backend/requirements-core.txt backend/requirements-ai.txt backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements-core.txt -r requirements-ai.txt
+# Bake Chroma's ONNX MiniLM (~80 MB) into the image. Otherwise the first knowledge-base search
+# downloads it mid-conversation, and a stalled download hangs that turn indefinitely.
+RUN python -c "from chromadb.utils.embedding_functions import DefaultEmbeddingFunction as E; E()(['warm'])"
 
 COPY backend/ ./backend/
 COPY knowledge/ ./knowledge/

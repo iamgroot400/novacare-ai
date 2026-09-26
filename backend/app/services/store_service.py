@@ -114,6 +114,15 @@ def get_ticket(db: Session, ticket_id: str) -> dict | None:
     return ticket_to_dict(t) if t else None
 
 
+# How customers phrase a feature -> the label the catalogue uses. Without this, a
+# required feature of "noise cancelling" demotes every ANC product out of the results.
+_FEATURE_ALIASES = {"anc": ("noise cancel", "noise-cancel", "active noise")}
+
+
+def _canon_feature(f: str) -> str:
+    return next((canon for canon, aliases in _FEATURE_ALIASES.items() if any(a in f for a in aliases)), f)
+
+
 def search_products(
     db: Session,
     query: str = "",
@@ -124,6 +133,11 @@ def search_products(
     limit: int = 6,
 ) -> list[dict]:
     stmt = select(Product)
+    # The model guesses categories ("headphones") that aren't catalogue categories ("Audio");
+    # an exact filter on those silently returns nothing, so treat unknown ones as search words.
+    known = {c.lower() for c in db.scalars(select(Product.category).distinct())}
+    if category and category.strip().lower() not in known:
+        query, category = f"{query} {category}".strip(), None
     if category:
         stmt = stmt.where(func.lower(Product.category) == category.strip().lower())
     if max_price is not None:
@@ -133,7 +147,7 @@ def search_products(
 
     rows = list(db.scalars(stmt).all())
     q = (query or "").strip().lower()
-    feats = [f.strip().lower() for f in (required_features or []) if f.strip()]
+    feats = [_canon_feature(f.strip().lower()) for f in (required_features or []) if f.strip()]
 
     synonyms = {
         "headphones": ["earbuds", "pods", "audio", "anc", "headphone"],

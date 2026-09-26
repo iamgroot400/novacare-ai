@@ -1,10 +1,6 @@
 # Heavy AI stack — agent + RAG. Installed in the Docker image (python 3.11).
-# CPU-only torch keeps the image small and works without a GPU.
---extra-index-url https://download.pytorch.org/whl/cpu
-
-torch==2.4.1+cpu
+# No torch / sentence-transformers: RAG uses Chroma's bundled ONNX MiniLM (fits a 1 GB box).
 langgraph>=0.2.60,<2
 langchain-core>=0.3.28
-langchain-ollama>=0.2.2
+langchain-groq>=0.2
 chromadb>=0.5.20,<0.6
-sentence-transformers>=3.0,<4

@@ -13,12 +13,15 @@ class Settings(BaseSettings):
     # Demo determinism
     demo_date: str = "2026-09-03"
 
-    # Ollama
-    ollama_base_url: str = "http://localhost:11434"
-    ollama_model: str = "qwen3:4b"
+    # LLM (Groq hosted, free tier)
+    groq_api_key: str = ""
+    groq_model: str = "openai/gpt-oss-120b"  # best Nepali of the Groq models tested
+    # Free tier: ~8k tokens/min and (qwen) 1k output tokens/min, so keep replies and reasoning small.
+    groq_max_tokens: int = 700
+    groq_reasoning_effort: str = "low"  # gpt-oss: low|medium|high; qwen: none|default; "" = don't send
 
     # Chroma
-    chroma_host: str = "localhost"
+    chroma_host: str = "local"  # "local" = embedded persistent Chroma, no server
     chroma_port: int = 8000
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
 

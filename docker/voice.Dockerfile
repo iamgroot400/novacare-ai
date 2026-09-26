@@ -9,13 +9,17 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential curl ffmpeg libsndfile1 espeak-ng git && rm -rf /var/lib/apt/lists/*
+    build-essential curl ffmpeg libsndfile1 git && rm -rf /var/lib/apt/lists/*
 
 COPY voice/requirements.txt voice/requirements-pipecat.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 # Full-duplex stack is best-effort; the push-to-talk fallback works regardless.
 RUN pip install --no-cache-dir -r requirements-pipecat.txt \
     || echo "WARN: pipecat/aiortc not installed — voice service will run in push-to-talk-only mode"
+
+# Piper fallback voice (~20 MB), baked into the image
+RUN python -m piper.download_voices en_US-lessac-low ne_NP-google-medium --data-dir /models_cache/piper \
+    || echo "WARN: piper voice not downloaded - TTS fallback unavailable"
 
 COPY voice/ ./
 

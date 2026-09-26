@@ -6,6 +6,7 @@ Endpoints:
   POST /api/voice/offer            -> SmallWebRTC signaling (full-duplex, if available)
   POST /api/voice/ptt              -> push-to-talk fallback (always works):
                                       multipart audio -> STT -> agent -> TTS wav
+  POST /api/voice/call             -> ring a phone via Twilio (see phone.py)
 """
 from __future__ import annotations
 
@@ -17,8 +18,9 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
-from agent_client import AgentClient
+from agent_client import AgentClient, voice_turn
 from config import config
+from phone import router as phone_router
 
 logging.basicConfig(level="INFO")
 log = logging.getLogger("novacare.voice")
@@ -31,6 +33,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(phone_router)
 
 agent_client = AgentClient()
 _pcs: dict[str, object] = {}
@@ -50,8 +54,8 @@ async def health():
     return {
         "status": "ok",
         "full_duplex": PIPECAT,
-        "whisper_model": config.whisper_model,
-        "kokoro_voice": config.kokoro_voice,
+        "stt_model": config.groq_stt_model,
+        "tts_model": config.groq_tts_model,
         "backend_url": config.backend_url,
     }
 
@@ -137,12 +141,8 @@ async def push_to_talk(
             "pending_action": None,
         })
 
-    result = await agent_client.send_message(conversation_id, transcript)
-    reply = result.get("reply", "")
-    pending = result.get("pending_action")
-    spoken = reply
-    if pending:
-        spoken = reply + " Please review and confirm the action on your screen."
+    turn = await voice_turn(conversation_id, transcript)
+    reply, pending, spoken = turn["reply"], turn["pending_action"], turn["spoken"]
 
     try:
         wav = await asyncio.to_thread(tts_module.synthesize_wav, spoken)
@@ -161,6 +161,12 @@ async def push_to_talk(
         "audio_base64": audio_b64,
         "audio_mime": "audio/wav",
     })
+
+
+@app.on_event("startup")
+async def _warm_tts():
+    if bot_module:  # background: ~10-20s of TTS calls, must not delay startup
+        asyncio.create_task(asyncio.to_thread(bot_module.warm_tts))
 
 
 @app.on_event("shutdown")

@@ -30,7 +30,6 @@ switch ($Task) {
   "down"  { docker compose down }
   "logs"  { docker compose logs -f --tail=100 }
   "models" {
-    docker compose exec -T ollama ollama pull $(if ($env:OLLAMA_MODEL) { $env:OLLAMA_MODEL } else { "qwen3:4b" })
     docker compose exec -T backend python -c "from app.rag import get_rag; print(get_rag().reindex(force=True))"
   }
   "smoke" { python scripts/smoke_test.py }

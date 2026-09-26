@@ -13,7 +13,7 @@ from app.database.session import session_scope
 from app.events import AgentActivityEmitter
 from app.models import Conversation, Message
 
-MAX_HISTORY_MESSAGES = 20
+MAX_HISTORY_MESSAGES = 10  # resent on every LLM call; tools still see the last order via conv.context
 
 _INTENT_HINTS = [
     (("where", "track", "status", "arriv", "deliver", "delay", "transit"), "Detected an order-tracking request"),

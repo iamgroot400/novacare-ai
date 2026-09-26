@@ -1,70 +1,20 @@
 name: novacare-ai
 
 services:
-  ollama:
-    image: ollama/ollama:latest
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_models:/root/.ollama
-    healthcheck:
-      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
-      interval: 15s
-      timeout: 10s
-      retries: 10
-    restart: unless-stopped
-
-  # One-shot: pulls the model into the shared volume, then exits.
-  ollama-init:
-    image: ollama/ollama:latest
-    depends_on:
-      ollama:
-        condition: service_healthy
-    volumes:
-      - ollama_models:/root/.ollama
-    environment:
-      - OLLAMA_HOST=ollama:11434
-      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen3:4b}
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - 'echo "Pulling ${OLLAMA_MODEL:-qwen3:4b} ..." && ollama pull ${OLLAMA_MODEL:-qwen3:4b} && echo "Model ready."'
-    restart: "no"
-
-  chroma:
-    image: chromadb/chroma:0.5.23
-    ports:
-      - "8001:8000"
-    volumes:
-      - chroma_data:/chroma/chroma
-    environment:
-      - IS_PERSISTENT=TRUE
-      - ANONYMIZED_TELEMETRY=FALSE
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; urllib.request.urlopen('http://localhost:8000/api/v1/heartbeat')\" || exit 1"]
-      interval: 15s
-      timeout: 10s
-      retries: 10
-    restart: unless-stopped
-
   backend:
     build:
       context: .
       dockerfile: docker/backend.Dockerfile
     ports:
       - "8000:8000"
-    depends_on:
-      chroma:
-        condition: service_healthy
-      ollama:
-        condition: service_healthy
     environment:
       - DEMO_DATE=${DEMO_DATE:-2026-09-03}
       - DATABASE_URL=sqlite:////data/novacare.db
-      - OLLAMA_BASE_URL=http://ollama:11434
-      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen3:4b}
-      - CHROMA_HOST=chroma
-      - CHROMA_PORT=8000
-      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2}
+      - GROQ_API_KEY=${GROQ_API_KEY:?set GROQ_API_KEY in .env}
+      - GROQ_MODEL=${GROQ_MODEL:-openai/gpt-oss-120b}
+      - GROQ_REASONING_EFFORT=${GROQ_REASONING_EFFORT:-low}
+      - CHROMA_HOST=local
+      - RAG_PERSIST_DIR=/data/chroma
       - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS:-http://localhost:3000}
       - WEBRTC_STUN_URL=${WEBRTC_STUN_URL:-stun:stun.l.google.com:19302}
       - WEBRTC_TURN_URL=${WEBRTC_TURN_URL:-}
@@ -88,10 +38,20 @@ services:
         condition: service_healthy
     environment:
       - BACKEND_URL=http://backend:8000
-      - WHISPER_MODEL=${WHISPER_MODEL:-base}
-      - WHISPER_DEVICE=${WHISPER_DEVICE:-cpu}
-      - WHISPER_COMPUTE_TYPE=${WHISPER_COMPUTE_TYPE:-int8}
-      - KOKORO_VOICE=${KOKORO_VOICE:-af_heart}
+      - GROQ_API_KEY=${GROQ_API_KEY:?set GROQ_API_KEY in .env}
+      - GROQ_TTS_MODEL=${GROQ_TTS_MODEL:-canopylabs/orpheus-v1-english}
+      - GROQ_TTS_VOICE=${GROQ_TTS_VOICE:-autumn}
+      - GROQ_STT_MODEL=${GROQ_STT_MODEL:-whisper-large-v3}
+      - STT_LANGUAGE=${STT_LANGUAGE:-}
+      - EDGE_VOICE_NE=${EDGE_VOICE_NE:-ne-NP-HemkalaNeural}
+      - EDGE_VOICE_EN=${EDGE_VOICE_EN:-en-US-AriaNeural}
+      - VAD_STOP_SECS=${VAD_STOP_SECS:-0.6}
+      - FILLER_AFTER_SECS=${FILLER_AFTER_SECS:-1.2}
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
+      - TWILIO_FROM_NUMBER=${TWILIO_FROM_NUMBER:-}
+      - CALL_API_TOKEN=${CALL_API_TOKEN:-}
+      - PUBLIC_VOICE_URL=${PUBLIC_VOICE_URL:-}
       - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS:-http://localhost:3000}
       - WEBRTC_STUN_URL=${WEBRTC_STUN_URL:-stun:stun.l.google.com:19302}
       - WEBRTC_TURN_URL=${WEBRTC_TURN_URL:-}
@@ -115,6 +75,16 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # Phone calls: public HTTPS/WSS tunnel to the voice service so Twilio can reach it.
+  # Enable with: docker compose --profile phone up -d   (URL is auto-discovered by voice)
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles: ["phone"]
+    command: tunnel --no-autoupdate --metrics 0.0.0.0:2000 --url http://voice:8080
+    depends_on:
+      - voice
+    restart: unless-stopped
+
   # Optional self-hosted TURN — enable with: docker compose --profile turn up -d
   coturn:
     image: coturn/coturn:4.6
@@ -130,7 +100,5 @@ services:
     restart: unless-stopped
 
 volumes:
-  ollama_models:
-  chroma_data:
   sqlite_data:
   models_cache:

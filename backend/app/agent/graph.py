@@ -1,10 +1,10 @@
-"""LangGraph agent construction (Ollama + tools, ReAct style)."""
+"""LangGraph agent construction (Groq + tools, ReAct style)."""
 from __future__ import annotations
 
 import re
 from functools import lru_cache
 
-from langchain_ollama import ChatOllama
+from langchain_groq import ChatGroq
 from langgraph.prebuilt import create_react_agent
 
 from app.agent.prompts import SYSTEM_PROMPT
@@ -23,18 +23,10 @@ def strip_reasoning(text: str) -> str:
     return text.strip()
 
 
-def _build_llm() -> ChatOllama:
-    common = dict(
-        model=settings.ollama_model,
-        base_url=settings.ollama_base_url,
-        temperature=0.2,
-        num_ctx=8192,
-    )
-    # `reasoning=` disables qwen3's thinking trace on newer langchain-ollama.
-    try:
-        return ChatOllama(**common, reasoning=False)
-    except TypeError:
-        return ChatOllama(**common)
+def _build_llm() -> ChatGroq:
+    extra = {"reasoning_effort": settings.groq_reasoning_effort} if settings.groq_reasoning_effort else {}
+    return ChatGroq(model=settings.groq_model, api_key=settings.groq_api_key or None, temperature=0.2,
+                    max_tokens=settings.groq_max_tokens, **extra)
 
 
 @lru_cache

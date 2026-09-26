@@ -63,6 +63,19 @@ def test_product_search_headphones_anc_under_7000(db):
     assert results[0]["id"] == "P002"
 
 
+def test_product_search_noise_cancelling_means_anc(db):
+    for phrase in ("noise cancelling", "Noise-Cancelling", "active noise cancellation"):
+        results = svc.search_products(db, query="headphones", max_price=7000, required_features=[phrase])
+        assert results and results[0]["id"] == "P002", phrase
+
+
+def test_product_search_unknown_category_is_a_search_word(db):
+    # "headphones" is not a catalogue category (that's "Audio"); it must not filter everything out
+    results = svc.search_products(db, category="headphones", max_price=7000, required_features=["ANC"])
+    assert results and results[0]["id"] == "P002"
+    assert all(r["category"] == "Audio" for r in svc.search_products(db, category="audio"))
+
+
 def test_product_search_keyboard_under_8000(db):
     results = svc.search_products(db, query="keyboard", max_price=8000)
     ids = [r["id"] for r in results]

@@ -23,12 +23,28 @@ def _ice_servers() -> list[dict]:
 @dataclass
 class VoiceConfig:
     backend_url: str = os.getenv("BACKEND_URL", "http://localhost:8000")
-    whisper_model: str = os.getenv("WHISPER_MODEL", "base")
-    whisper_device: str = os.getenv("WHISPER_DEVICE", "cpu")
-    whisper_compute_type: str = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
-    kokoro_voice: str = os.getenv("KOKORO_VOICE", "af_heart")
-    kokoro_lang: str = os.getenv("KOKORO_LANG", "a")
+    groq_api_key: str = os.getenv("GROQ_API_KEY", "")
+    # large-v3 (not -turbo): noticeably better on Nepali
+    groq_stt_model: str = os.getenv("GROQ_STT_MODEL", "whisper-large-v3")
+    stt_language: str = os.getenv("STT_LANGUAGE", "")  # "" = auto-detect; "ne" or "en" pins it
+    # Groq's TTS model names have changed over time; check console.groq.com/docs/text-to-speech
+    groq_tts_model: str = os.getenv("GROQ_TTS_MODEL", "canopylabs/orpheus-v1-english")
+    groq_tts_voice: str = os.getenv("GROQ_TTS_VOICE", "autumn")
+    piper_voice: str = os.getenv("PIPER_VOICE", "en_US-lessac-low")
+    piper_voice_ne: str = os.getenv("PIPER_VOICE_NE", "ne_NP-google-medium")
+    edge_voice_ne: str = os.getenv("EDGE_VOICE_NE", "ne-NP-HemkalaNeural")
+    edge_voice_en: str = os.getenv("EDGE_VOICE_EN", "en-US-AriaNeural")
+    vad_stop_secs: float = float(os.getenv("VAD_STOP_SECS", "0.6"))
+    # If the agent hasn't answered after this long (a tool is running), say a short filler.
+    filler_after_secs: float = float(os.getenv("FILLER_AFTER_SECS", "1.2"))
+    piper_dir: str = os.getenv("PIPER_DIR", "/models_cache/piper")
     sample_rate: int = 24000
+    # Phone calls (Twilio). PUBLIC_VOICE_URL empty = auto-discover the cloudflared quick tunnel.
+    twilio_account_sid: str = os.getenv("TWILIO_ACCOUNT_SID", "")
+    twilio_auth_token: str = os.getenv("TWILIO_AUTH_TOKEN", "")
+    twilio_from_number: str = os.getenv("TWILIO_FROM_NUMBER", "")
+    call_api_token: str = os.getenv("CALL_API_TOKEN", "")
+    public_voice_url: str = os.getenv("PUBLIC_VOICE_URL", "")
     cors_origins: list[str] = field(
         default_factory=lambda: [
             o.strip() for o in os.getenv("CORS_ALLOW_ORIGINS", "http://localhost:3000").split(",")
