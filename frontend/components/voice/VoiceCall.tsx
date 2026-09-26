@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useSupport } from "@/components/SupportProvider";
 import { VOICE_BASE } from "@/lib/api";
 import { Waveform } from "./Waveform";
+import { startDuplexCall, type DuplexCall } from "./duplex";
 
 type CallState = "requesting" | "ready" | "live" | "recording" | "thinking" | "speaking" | "error";
 
@@ -16,13 +17,13 @@ export function VoiceCall({ onClose, inline = false }: { onClose: () => void; in
   const [userText, setUserText] = useState("");
   const [aiText, setAiText] = useState("");
   const [fullDuplex, setFullDuplex] = useState<boolean | null>(null);
+  const [botTalking, setBotTalking] = useState(false);
 
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
-  const pcRef = useRef<RTCPeerConnection | null>(null);
+  const callRef = useRef<DuplexCall | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval>>();
 
   const stopEverything = useCallback(() => {
@@ -30,46 +31,32 @@ export function VoiceCall({ onClose, inline = false }: { onClose: () => void; in
     streamRef.current?.getTracks().forEach((t) => t.stop());
     if (timerRef.current) clearInterval(timerRef.current);
     audioRef.current?.pause();
-    pcRef.current?.close();
+    callRef.current?.stop();
   }, []);
 
-  // Full-duplex: mic streams to the server continuously, server VAD detects turns and barge-in.
-  const connectDuplex = async (stream: MediaStream, iceServers: RTCIceServer[]) => {
-    const pc = new RTCPeerConnection({ iceServers });
-    pcRef.current = pc;
-    stream.getTracks().forEach((t) => pc.addTrack(t, stream));
-    pc.ontrack = (e) => {
-      if (remoteAudioRef.current) remoteAudioRef.current.srcObject = e.streams[0];
-    };
-    pc.onconnectionstatechange = () => {
-      if (["failed", "disconnected", "closed"].includes(pc.connectionState)) setState("error");
-    };
-    await pc.setLocalDescription(await pc.createOffer());
-    // non-trickle ICE: wait for gathering (max 3s) so the offer carries all candidates
-    await new Promise<void>((resolve) => {
-      if (pc.iceGatheringState === "complete") return resolve();
-      const done = () => pc.iceGatheringState === "complete" && resolve();
-      pc.addEventListener("icegatheringstatechange", done);
-      setTimeout(resolve, 3000);
+  // Full duplex: the mic streams continuously; the server's VAD decides when you've finished
+  // speaking, and stops the bot the moment you talk over it.
+  const connectDuplex = async (stream: MediaStream) => {
+    const url = `${VOICE_BASE.replace(/^http/, "ws")}/api/voice/ws?conversation_id=${encodeURIComponent(
+      convo.conversationId ?? "",
+    )}`;
+    callRef.current = await startDuplexCall({
+      url,
+      stream,
+      onBotTalking: setBotTalking,
+      onClosed: () => {
+        setState("error");
+        setError("The call was disconnected. Close this and call again.");
+      },
     });
-    const res = await fetch(`${VOICE_BASE}/api/voice/offer`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sdp: pc.localDescription!.sdp,
-        type: pc.localDescription!.type,
-        conversation_id: convo.conversationId,
-      }),
-    });
-    if (!res.ok) throw new Error(await res.text());
-    const answer = await res.json();
-    await pc.setRemoteDescription({ type: answer.type, sdp: answer.sdp });
   };
 
   useEffect(() => {
     (async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        });
         streamRef.current = stream;
         setState("ready");
         timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000);
@@ -78,11 +65,11 @@ export function VoiceCall({ onClose, inline = false }: { onClose: () => void; in
           setFullDuplex(Boolean(cfg.full_duplex));
           if (cfg.full_duplex) {
             try {
-              await connectDuplex(stream, cfg.ice_servers ?? []);
+              await connectDuplex(stream);
               setState("live");
               return;
             } catch {
-              pcRef.current?.close();
+              callRef.current?.stop();
               setFullDuplex(false); // fall back to push-to-talk
             }
           }
@@ -169,7 +156,7 @@ export function VoiceCall({ onClose, inline = false }: { onClose: () => void; in
   const statusLabel: Record<CallState, string> = {
     requesting: "Requesting microphone…",
     ready: "Connected — hold the button and speak",
-    live: "Live — just talk. You can interrupt anytime.",
+    live: "Listening — just talk, like a phone call",
     recording: "Listening…",
     thinking: "Processing voice…",
     speaking: "NovaCare is speaking…",
@@ -178,13 +165,12 @@ export function VoiceCall({ onClose, inline = false }: { onClose: () => void; in
 
   return (
     <div className={inline ? "flex justify-center py-6" : "fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur"}>
-      <audio ref={remoteAudioRef} autoPlay />
       <div className="card w-full max-w-md overflow-hidden">
         <div className="gradient-hero relative border-b border-slate-200 p-5 dark:border-slate-800">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="relative flex h-3 w-3">
-                {(state === "recording" || state === "speaking") && (
+                {(state === "recording" || state === "speaking" || (state === "live" && botTalking)) && (
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-nova-400 opacity-75" />
                 )}
                 <span className="relative inline-flex h-3 w-3 rounded-full bg-nova-500" />
@@ -193,7 +179,9 @@ export function VoiceCall({ onClose, inline = false }: { onClose: () => void; in
             </div>
             <span className="font-mono text-sm text-slate-500">{mmss}</span>
           </div>
-          <p className="mt-1 text-xs text-slate-500">{statusLabel[state]}</p>
+          <p className="mt-1 text-xs text-slate-500">
+            {state === "live" && botTalking ? "NovaCare is speaking — talk to interrupt" : statusLabel[state]}
+          </p>
           {fullDuplex === false && state !== "error" && (
             <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
               Full-duplex unavailable — using push-to-talk.

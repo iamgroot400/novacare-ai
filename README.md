@@ -19,7 +19,7 @@ is enough for a demo (not load-tested).
 ## Architecture
 
 ```
-      Caller (browser mic over WebRTC, or phone via Twilio)
+      Caller (browser mic over a WebSocket, or phone via Twilio)
                             │
             Silero VAD (turn detection + barge-in, Pipecat)
                             │
@@ -57,13 +57,14 @@ requests) is streamed to the UI as structured backend events, **never** chain-of
 | RAG | ChromaDB (embedded) · ONNX `all-MiniLM-L6-v2` baked into the image |
 | Speech-to-text | Groq `whisper-large-v3` |
 | Text-to-speech | Groq (English), Microsoft Edge neural voices, Piper (offline fallback) |
-| Voice transport | Pipecat 0.0.62 · SmallWebRTC (browser) · Twilio Media Streams (phone) |
-| Deploy | Docker Compose (frontend, backend, voice; optional cloudflared, coturn) |
+| Voice transport | Pipecat 0.0.62 · WebSocket PCM (browser) · Twilio Media Streams (phone) |
+| Deploy | Docker Compose (frontend, backend, voice; optional cloudflared) |
 
 ## Features
 
-- **Voice-only support page** (`/support`): a full-duplex call with live captions. Talk
-  naturally and interrupt the agent at any time. Push-to-talk is the automatic fallback.
+- **Voice-only support page** (`/support`): a real call, like a phone. It listens all the
+  time, answers when you stop talking, and stops talking the moment you speak over it.
+  Live captions; push-to-talk is only a fallback if the call can't connect.
 - **Nepali and English**, detected per turn. Devanagari or romanized Nepali
   ("mero order kaha cha") gets a reply in spoken-style Nepali, never Hindi.
 - **Spoken confirmations.** Write actions ask "म यो गरिदिऊँ?" / "Shall I go ahead?" and
@@ -120,7 +121,7 @@ search.
 ### Windows
 
 `make` isn't required. Use `./scripts/tasks.ps1 <task>` (`env`, `setup`, `up`, `models`,
-`seed`, `test`, `smoke`, `turn`, `down`, `clean`) or the `docker compose` commands above.
+`seed`, `test`, `smoke`, `down`, `clean`) or the `docker compose` commands above.
 
 ---
 
@@ -220,34 +221,17 @@ npm install && npm run dev
 
 ## Voice setup
 
-- **Full duplex:** Pipecat `SmallWebRTCTransport` with Silero VAD. Signaling endpoint:
-  `POST {VOICE_URL}/api/voice/offer`.
+- **Full duplex:** `WS {VOICE_URL}/api/voice/ws`. The browser streams 16 kHz PCM from the
+  mic continuously (an AudioWorklet in `frontend/components/voice/duplex.ts`); Silero VAD on
+  the server decides when you've finished (`VAD_STOP_SECS`) and sends `0x02` to stop playback
+  the moment you talk over the bot. Bot audio comes back as `0x01` + 24 kHz PCM. It's plain
+  HTTPS/WSS, so it works on any network with no UDP ports, STUN or TURN.
 - **Push-to-talk fallback:** `POST {VOICE_URL}/api/voice/ptt` takes one audio clip and
-  returns `{ transcript, reply, audio_base64 }`. The browser uses it automatically if
-  full duplex can't start.
+  returns `{ transcript, reply, audio_base64 }`. Used only if the call can't connect.
 - **Phone:** `POST /api/voice/call`, `POST /api/voice/twilio/twiml`,
   `WS /api/voice/twilio/ws` (see [Phone calls](#phone-calls-twilio)).
-
-### STUN / TURN
-
-Set in `.env`:
-
-```
-WEBRTC_STUN_URL=stun:stun.l.google.com:19302
-WEBRTC_TURN_URL=turn:your-host:3478
-WEBRTC_TURN_USERNAME=novacare
-WEBRTC_TURN_PASSWORD=...
-```
-
-These are served to the browser via `GET /api/config` and `GET /api/voice/config`.
-Self-hosted TURN is bundled as an optional profile:
-
-```bash
-docker compose --profile turn up -d          # starts coturn (host networking)
-# open UDP 3478 and 49152–49200 on the host firewall; set COTURN_EXTERNAL_IP in .env
-```
-
-TURN is **not** needed for local testing.
+- **Echo:** the browser's echo cancellation keeps the bot from hearing itself on speakers;
+  headphones make barge-in the most reliable.
 
 ---
 
@@ -275,8 +259,7 @@ Because all models are hosted, the stack is sized for a 1 vCPU / 1 GB VM:
    ```
    Rebuild the frontend so `NEXT_PUBLIC_*` values are baked in:
    `docker compose build frontend && docker compose up -d`.
-4. Security group / firewall: expose 80/443. WebRTC media is UDP; behind strict NATs
-   configure TURN (above) and open its ports.
+4. Security group / firewall: expose 80/443 only. Calls are websockets over 443.
 5. Named volumes `sqlite_data` and `models_cache` persist across restarts. Back up `sqlite_data`.
 
 Secrets live only in `.env` (git-ignored). Never commit real credentials.
@@ -334,7 +317,8 @@ Nepali:
 | Every reply is "Sorry, I ran into a problem" | Check `docker compose logs backend`: a 401 means a bad key, a 404 means `GROQ_MODEL` isn't available to your key |
 | Replies take 10–30 s | Free-tier rate limit (see [Free-tier limits](#free-tier-limits)) |
 | English voice sounds robotic, logs show `Groq TTS failed ... 400` | Accept the `GROQ_TTS_MODEL` terms in the Groq console; Edge/Piper are used meanwhile |
-| Voice says "full-duplex unavailable" | Expected on some networks. Push-to-talk still works; configure TURN for full duplex |
+| Call shows push-to-talk instead of a live call | The `/voice/api/voice/ws` websocket didn't connect: check `docker compose logs voice` and that your proxy passes websockets |
+| The bot cuts itself off or answers itself | It's hearing its own voice from the speakers: use headphones, or raise `VAD_STOP_SECS` |
 | Mic permission blocked | Browser site settings → allow microphone; HTTPS required off-localhost |
 | Phone call never connects | Check the tunnel is up (`docker compose --profile phone ps`), the number is verified, and geo permissions allow the country |
 | RAG returns nothing | `bash scripts/init_models.sh` |
@@ -371,15 +355,15 @@ novacare-ai/
 │     ├─ schemas/   Pydantic (API + tool argument validation)
 │     └─ events/    observable agent-activity event bus
 ├─ voice/
-│  ├─ bot.py        Pipecat pipelines (browser WebRTC + phone), fillers, greeting
+│  ├─ bot.py        Pipecat pipelines (browser websocket + phone), fillers, greeting
 │  ├─ stt.py        Groq Whisper with Nepali handling
 │  ├─ tts.py        per-sentence Nepali/English TTS with fallbacks + phrase cache
 │  ├─ agent_client.py  backend client + spoken yes/no confirmations
 │  ├─ phone.py      Twilio outbound calls, TwiML, media-stream websocket
-│  └─ server.py     FastAPI: signaling, push-to-talk, phone routes
+│  └─ server.py     FastAPI: call websocket, push-to-talk, phone routes
 ├─ knowledge/       14 Markdown docs for RAG
 ├─ scripts/         seed.py, init_models.sh, smoke_test.py, nepali_check.py, tasks.ps1
-├─ docker/          Dockerfiles + coturn config
+├─ docker/          Dockerfiles
 ├─ docker-compose.yml
 ├─ .env.example
 └─ Makefile

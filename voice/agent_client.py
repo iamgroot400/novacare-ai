@@ -71,7 +71,8 @@ _T = {
 
 
 def speakable(text: str) -> str:
-    """Strip markdown so TTS doesn't read asterisks and hashes aloud."""
+    """Strip markdown and list markers so TTS doesn't read "*", "#" or a lone "१." aloud."""
+    text = re.sub(r"(?m)^\s*(?:[-•*]|[0-9०-९]+[.)])\s+", "", text)
     return re.sub(r"[*_`#>]+", "", text).strip()
 
 

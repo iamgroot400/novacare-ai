@@ -36,17 +36,10 @@ services:
     image: novacare-voice
     env_file: /etc/novacare/novacare.env
     environment:
-      - BACKEND_URL=http://127.0.0.1:8100
-    # WebRTC media arrives as UDP on random ports. Docker's bridge NAT would drop it, so the
-    # voice service shares the host network; uvicorn itself listens on localhost only.
-    network_mode: host
-    command: ["uvicorn", "server:app", "--host", "127.0.0.1", "--port", "8180"]
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8180/health"]
-      interval: 30s
-      timeout: 10s
-      start_period: 60s
-      retries: 5
+      - BACKEND_URL=http://backend:8000
+    # Calls (browser and phone) are websockets through Caddy, so no UDP ports are needed.
+    ports:
+      - "127.0.0.1:8180:8080"
     depends_on:
       backend:
         condition: service_healthy

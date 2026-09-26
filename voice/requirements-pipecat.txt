@@ -1,3 +1,3 @@
-# Full-duplex WebRTC voice (best-effort). If this fails to resolve, the voice
-# service still runs and the browser uses the push-to-talk fallback.
-pipecat-ai[silero,webrtc,openai]==0.0.62  # openai extra: needed only to import pipecat; no OpenAI calls
+# Full-duplex voice (best-effort). If this fails to resolve, the voice service
+# still runs and the browser uses the push-to-talk fallback.
+pipecat-ai[silero,openai]==0.0.62  # openai extra: needed only to import pipecat; no OpenAI calls. No webrtc extra: calls use websockets

@@ -35,6 +35,68 @@ def sentences(text: str) -> list[str]:
     return [s.strip() for s in _SENTENCES.split((text or "").strip()) if s.strip()]
 
 
+# ─── Making Nepali text speakable ───────────────────────────────────────
+# The Nepali voice stumbles over Latin text inside a Nepali sentence ("NS-1077", "NovaPods",
+# "(forget)"), so those are rewritten into Devanagari before synthesis. Chat still shows the
+# original text; this only changes what is spoken.
+_NE_DIGITS = str.maketrans("0123456789", "०१२३४५६७८९")
+_NE_DIGIT_WORDS = dict(zip("0123456789", "शून्य एक दुई तीन चार पाँच छ सात आठ नौ".split()))
+_NE_LETTERS = dict(zip("ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+                       "ए बी सी डी ई एफ जी एच आई जे के एल एम एन ओ पी क्यू आर एस टी यू भी डब्लु एक्स वाई जेड".split()))
+# Catalogue words and the English words the agent tends to leave in Nepali replies.
+_NE_WORDS = {
+    "nova": "नोभा", "store": "स्टोर", "care": "केयर", "pods": "पड्स", "pro": "प्रो", "lite": "लाइट",
+    "watch": "वाच", "sound": "साउन्ड", "mini": "मिनी", "charge": "चार्ज", "keys": "किज",
+    "mechanical": "मेकानिकल", "mouse": "माउस", "air": "एयर", "cam": "क्याम", "book": "बुक",
+    "sleeve": "स्लिभ", "hub": "हब", "buds": "बड्स", "sport": "स्पोर्ट", "active": "एक्टिभ",
+    "band": "ब्यान्ड", "fit": "फिट", "desk": "डेस्क", "stand": "स्ट्यान्ड", "pad": "प्याड",
+    "wireless": "वायरलेस", "charger": "चार्जर", "mic": "माइक", "studio": "स्टुडियो", "dock": "डक",
+    "glow": "ग्लो", "lamp": "ल्याम्प", "compact": "कम्प्याक्ट", "bar": "बार", "power": "पावर",
+    "track": "ट्र्याक", "tag": "ट्याग", "bluetooth": "ब्लुटुथ", "order": "अर्डर", "return": "रिटर्न",
+    "refund": "रिफन्ड", "warranty": "वारेन्टी", "ticket": "टिकट", "support": "सपोर्ट",
+    "delivery": "डेलिभरी", "app": "एप", "firmware": "फर्मवेयर", "update": "अपडेट", "reset": "रिसेट",
+    "pairing": "पेयरिङ", "noise": "नोइज", "cancelling": "क्यान्सलिङ", "cancellation": "क्यान्सलेसन",
+    "battery": "ब्याट्री", "okay": "ओके", "ok": "ओके", "wifi": "वाइफाइ", "online": "अनलाइन",
+}
+
+
+def _spell(code: str) -> str:
+    return " ".join(_NE_LETTERS.get(ch, _NE_DIGIT_WORDS.get(ch, "")) for ch in code.upper()
+                    if ch.isalnum()).strip()
+
+
+def _word(m: re.Match) -> str:
+    w = m.group(0)
+    if w.isupper() and len(w) <= 5:  # acronym: ANC, USB, NPR
+        return _spell(w)
+    parts = re.findall(r"[A-Z]?[a-z]+|[A-Z]+(?![a-z])", w)  # NovaPods -> Nova, Pods
+    return " ".join(_NE_WORDS.get(p.lower(), p) for p in parts)
+
+
+# Formal/written words the model keeps using despite the prompt; spoken Nepali instead.
+_NE_SPOKEN = [
+    (r"मानव (?:विशेषज्ञ|सहायक|प्रतिनिधि)", "हाम्रो टिमको मान्छे"), (r"केही क्षण", "एकछिन"),
+    (r"पुन[:ः]", "फेरि"), (r"प्रणालीमा", "रेकर्डमा"), (r"अनुमानित", "लगभग"),
+]
+
+
+def speakable_ne(text: str) -> str:
+    """Rewrite a Nepali sentence so the Nepali voice can read every word of it."""
+    t = re.sub(r"\s*\([^)]*[A-Za-z][^)]*\)", "", text)                      # "(forget)"
+    t = re.sub(r"[“”\"'‘’«»]", "", t)
+    for pattern, spoken in _NE_SPOKEN:
+        t = re.sub(pattern, spoken, t)
+    t = re.sub(r"\b(?:NPR|Rs)\.?\s*([\d,]+)", r"\1 रुपैयाँ", t)                  # NPR 5,999
+    # NS-1077 -> "एन एस १०७७": the voice reads "एक हजार सतहत्तर", which came through clearer in
+    # round-trip tests than digit by digit ("एक शून्य सात सात" blurred into "सेक्सुन्य").
+    t = re.sub(r"\b([A-Z]{1,4})-(\d+)\b", lambda m: f"{_spell(m.group(1))} {m.group(2)}", t)
+    t = re.sub(r"\b(\d+)([A-Za-z]+)\b", r"\1 \2", t)                          # 65W, 2K
+    t = re.sub(r"[A-Za-z]+", _word, t)
+    t = re.sub(r"(?<=\S)[‑–—-](?=\S)", " ", t)                                # अन‑अफ, १४‑दिन
+    t = t.translate(_NE_DIGITS)
+    return re.sub(r"\s+", " ", t).strip()
+
+
 def resample(audio: np.ndarray, sr: int, target: int | None = None) -> np.ndarray:
     # ponytail: linear interpolation, no anti-alias filter; fine for speech, use soxr if 8 kHz phone audio sounds harsh
     target = target or config.sample_rate
@@ -122,6 +184,8 @@ def _chain(text: str):
 
 
 def _speak(text: str) -> np.ndarray:
+    if is_nepali(text):
+        text = speakable_ne(text)
     for provider in _chain(text):
         try:
             return provider(text)

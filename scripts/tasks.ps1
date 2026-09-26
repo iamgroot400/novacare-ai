@@ -1,7 +1,7 @@
 <#
   NovaCare AI — Windows task runner (PowerShell equivalent of the Makefile)
   Usage:  ./scripts/tasks.ps1 <task>
-  Tasks:  env setup seed test up down logs models smoke turn clean
+  Tasks:  env setup seed test up down logs models smoke clean
 #>
 param([Parameter(Mandatory = $true)][string]$Task)
 
@@ -33,7 +33,6 @@ switch ($Task) {
     docker compose exec -T backend python -c "from app.rag import get_rag; print(get_rag().reindex(force=True))"
   }
   "smoke" { python scripts/smoke_test.py }
-  "turn"  { docker compose --profile turn up -d }
   "clean" { docker compose down -v }
   default { Write-Host "Unknown task: $Task" }
 }

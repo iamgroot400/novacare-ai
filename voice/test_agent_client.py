@@ -34,3 +34,22 @@ def test_warmed_phrases_are_not_resynthesized(monkeypatch):
     tts.warm(["एकछिन पर्खनुहोला, म हेर्दैछु।"])
     tts.synthesize("एकछिन पर्खनुहोला, म हेर्दैछु। नयाँ वाक्य।")
     assert calls == ["एकछिन पर्खनुहोला, म हेर्दैछु।", "नयाँ वाक्य।"]  # warm once, then only the new one
+
+
+def test_nepali_text_is_made_speakable():
+    from tts import speakable_ne
+
+    assert speakable_ne("अर्डर NS-1077 अहिले हबमा छ।") == "अर्डर एन एस १०७७ अहिले हबमा छ।"
+    assert speakable_ne("“NovaPods Pro” लाई हटाएर (forget) पुन: जोड्नुहोस्।") == "नोभा पड्स प्रो लाई हटाएर फेरि जोड्नुहोस्।"
+    assert speakable_ne("NovaPods Lite NPR 5,999 मा छ, ANC सहित।") == "नोभा पड्स लाइट ५,९९९ रुपैयाँ मा छ, ए एन सी सहित।"
+    assert speakable_ne("ब्लुटुथ अन‑अफ गर्नुहोस्, १४‑दिन।") == "ब्लुटुथ अन अफ गर्नुहोस्, १४ दिन।"
+    assert speakable_ne("NovaCharge 65W चार्जर") == "नोभा चार्ज ६५ डब्लु चार्जर"
+
+
+def test_spoken_text_drops_lists_and_formal_words():
+    from tts import speakable_ne
+
+    reply = "१. केसमा राख्नुहोस्।\n२. बटन थिच्नुहोस्।\n- अनि पुन: जोड्नुहोस्।"
+    assert speakable(reply) == "केसमा राख्नुहोस्।\nबटन थिच्नुहोस्।\nअनि पुन: जोड्नुहोस्।"
+    assert speakable_ne("म तपाईंलाई मानव विशेषज्ञसँग जोड्दैछु, केही क्षण पर्खनुहोला।") == \
+        "म तपाईंलाई हाम्रो टिमको मान्छेसँग जोड्दैछु, एकछिन पर्खनुहोला।"

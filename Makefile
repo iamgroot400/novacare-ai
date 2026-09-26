@@ -52,8 +52,5 @@ models: ## Rebuild the RAG index
 smoke: ## Run the end-to-end smoke test against the running stack
 	python scripts/smoke_test.py
 
-turn: ## Start the stack WITH the self-hosted coturn TURN server
-	$(COMPOSE) --profile turn up -d
-
 clean: ## Stop and remove volumes (DELETES demo data + models)
 	$(COMPOSE) down -v

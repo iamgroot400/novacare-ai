@@ -5,7 +5,7 @@ NovaCare runs on the same AWS EC2 instance as Cake Uncle (t3.small, 2 GB RAM, Ub
 
 ```
 Internet ─► Caddy :443 (shared with Cake Uncle)
-             ├─ /voice/*        ─► voice     127.0.0.1:8180  (host network, for WebRTC UDP)
+             ├─ /voice/*        ─► voice     127.0.0.1:8180  (calls are websockets: no UDP needed)
              ├─ /api/*, /health ─► backend   127.0.0.1:8100
              └─ everything else ─► frontend  127.0.0.1:3100
 ```
@@ -55,9 +55,7 @@ sudo docker compose -f deploy/compose.server.yml logs -f --tail=100 voice backen
 sudo docker stats --no-stream
 ```
 
-## Full-duplex voice (WebRTC)
+## Calls
 
-WebRTC audio is UDP on random ports, which both the AWS security group and `ufw` block by
-default. Until they're opened, browser calls fall back to push-to-talk (which works over
-HTTPS). To enable full duplex, allow inbound UDP 32768-60999 in the security group and run
-`sudo ufw allow 32768:60999/udp`.
+Browser calls (`/voice/api/voice/ws`) and Twilio phone calls are plain websockets through
+Caddy on 443, so no extra ports or firewall rules are needed.
