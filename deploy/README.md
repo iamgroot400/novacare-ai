@@ -13,12 +13,14 @@ Internet ─► Caddy :443 (shared with Cake Uncle)
 ## Keeping Cake Uncle safe
 
 - Containers listen on 127.0.0.1 only; Caddy is the single public entry point.
-- Memory caps (backend 448 MB, voice 640 MB, frontend 256 MB) with swap disabled per
+- Memory caps (backend 576 MB, voice 576 MB, frontend 192 MB; 1.3 GB total) with swap disabled per
   container: if NovaCare runs out, the kernel kills a NovaCare container, never Cake Uncle.
 - CPU caps so a long voice call can't starve Cake Uncle.
 - The frontend is built on the laptop (`next build` needs >1 GB RAM); backend and voice
   are built on the server one at a time.
-- Caddy config is validated before every reload and rolled back if invalid.
+- Caddy config is validated as the `caddy` user before every reload and rolled back if
+  validation or the reload fails. Site files must be mode 644 (this server's umask makes
+  new files root-only, which once blocked a reload).
 
 ## One-time setup (done 2026-09-26)
 

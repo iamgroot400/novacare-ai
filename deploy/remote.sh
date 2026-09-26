@@ -27,13 +27,17 @@ live=/etc/caddy/sites/novacare.caddy
 if cmp -s "$new" "$live" 2>/dev/null; then
   echo "unchanged"
 else
-  if [ -f "$live" ]; then cp "$live" "$live.bak"; fi
-  cp "$new" "$live"
-  if caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1; then
-    systemctl reload caddy && echo "reloaded"
+  if [ -f "$live" ]; then cp -p "$live" "$live.bak"; fi
+  # 644 explicitly: this server's umask would make it root-only, and Caddy runs as "caddy".
+  install -m 644 "$new" "$live"
+  # Validate AS the caddy user (catches unreadable files), and roll back if the reload fails:
+  # an import Caddy can't read would stop Caddy from starting after the next reboot.
+  if sudo -u caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1      && systemctl reload caddy; then
+    echo "reloaded"
   else
-    echo "Caddy config invalid; rolled back, Caddy untouched" >&2
-    if [ -f "$live.bak" ]; then mv "$live.bak" "$live"; else rm "$live"; fi
+    echo "Caddy rejected the new site; rolled back" >&2
+    if [ -f "$live.bak" ]; then mv "$live.bak" "$live"; else rm -f "$live"; fi
+    systemctl reload caddy || true
     exit 1
   fi
 fi
