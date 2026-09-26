@@ -37,8 +37,11 @@ bash deploy/deploy.sh
 ```
 
 It deploys the **committed HEAD**: builds and uploads the frontend image, uploads the
-source, builds backend and voice on the server, restarts, installs the Caddy site and
-checks health. Environment overrides: `HOST`, `KEY`, `DOMAIN`.
+source, then runs `deploy/remote.sh` on the server (build backend and voice, restart,
+install the Caddy site, health check). Environment overrides: `HOST`, `KEY`, `DOMAIN`.
+
+The server's `ufw` rate-limits SSH (6 new connections per 30 s) and fail2ban bans for an
+hour, so keep server work to as few SSH sessions as possible; don't poll it over SSH in a loop.
 
 ## Operate
 
