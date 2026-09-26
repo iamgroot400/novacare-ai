@@ -1,0 +1,69 @@
+# Production stack for the shared EC2 box (t3.small, 2 GB) that also runs Cake Uncle.
+# Run from the repo root on the server:  sudo docker compose -f deploy/compose.server.yml up -d
+#
+# Guards that keep Cake Uncle safe:
+# - Ports bind to 127.0.0.1 only (Caddy is the one public entry point); 3000 is Cake Uncle's.
+# - mem_limit == memswap_limit: if NovaCare runs out of memory, the kernel kills a NovaCare
+#   container, never Cake Uncle's Next.js or PostgreSQL, and NovaCare can't push the box into swap.
+# - cpus caps each service so a busy voice call can't starve Cake Uncle of CPU.
+# Secrets and per-server settings live in /etc/novacare/novacare.env (root, mode 600).
+name: novacare
+
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/backend.Dockerfile
+    image: novacare-backend
+    env_file: /etc/novacare/novacare.env
+    environment:
+      - DATABASE_URL=sqlite:////data/novacare.db
+      - CHROMA_HOST=local
+      - RAG_PERSIST_DIR=/data/chroma
+    ports:
+      - "127.0.0.1:8100:8000"
+    volumes:
+      - sqlite_data:/data
+    mem_limit: 448m
+    memswap_limit: 448m
+    cpus: 1.0
+    restart: unless-stopped
+
+  voice:
+    build:
+      context: ..
+      dockerfile: docker/voice.Dockerfile
+    image: novacare-voice
+    env_file: /etc/novacare/novacare.env
+    environment:
+      - BACKEND_URL=http://127.0.0.1:8100
+    # WebRTC media arrives as UDP on random ports. Docker's bridge NAT would drop it, so the
+    # voice service shares the host network; uvicorn itself listens on localhost only.
+    network_mode: host
+    command: ["uvicorn", "server:app", "--host", "127.0.0.1", "--port", "8180"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8180/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 5
+    depends_on:
+      backend:
+        condition: service_healthy
+    mem_limit: 640m
+    memswap_limit: 640m
+    cpus: 1.0
+    restart: unless-stopped
+
+  frontend:
+    # Built on the laptop by deploy/deploy.sh: `next build` needs more RAM than this box can spare.
+    image: novacare-frontend
+    ports:
+      - "127.0.0.1:3100:3000"
+    mem_limit: 256m
+    memswap_limit: 256m
+    cpus: 0.5
+    restart: unless-stopped
+
+volumes:
+  sqlite_data:

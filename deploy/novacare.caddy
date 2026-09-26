@@ -1,0 +1,46 @@
+# Installed as /etc/caddy/sites/novacare.caddy and pulled into Cake Uncle's Caddyfile by
+# `import sites/*.caddy`. deploy/deploy.sh validates the whole config before reloading, since a
+# broken config would take Cake Uncle down too. Caddy gets and renews the certificate itself.
+#
+# Not Cake Uncle's (common) snippet: it forbids the microphone, and a 1 MB body limit is too
+# small for push-to-talk audio.
+
+voice.aashikkhatri.com.np {
+	encode zstd gzip
+
+	@unwanted_methods method TRACE CONNECT
+	respond @unwanted_methods 405
+
+	request_body {
+		max_size 10MB
+	}
+
+	# Voice service: WebRTC signalling, push-to-talk, Twilio webhook + media websocket.
+	handle_path /voice/* {
+		reverse_proxy 127.0.0.1:8180
+	}
+
+	# Backend API and agent-activity websocket.
+	@backend path /api/* /health
+	handle @backend {
+		reverse_proxy 127.0.0.1:8100
+	}
+
+	handle {
+		reverse_proxy 127.0.0.1:3100
+	}
+
+	header {
+		Strict-Transport-Security "max-age=63072000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "microphone=(self), camera=(), geolocation=(), payment=(), usb=()"
+		-Server
+	}
+}
+
+# Cake Uncle's Caddyfile turns off automatic HTTP->HTTPS redirects, so redirect our name here.
+http://voice.aashikkhatri.com.np {
+	redir https://{host}{uri} permanent
+}
