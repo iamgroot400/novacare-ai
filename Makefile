@@ -14,21 +14,21 @@ setup: env ## Local dev setup (python venv + npm install)
 	backend/.venv/bin/pip install -U pip
 	backend/.venv/bin/pip install -r backend/requirements.txt
 	cd frontend && npm install
-	@echo "Setup done. Start Ollama + Chroma with 'make up' or run services individually."
+	@echo "Setup done. Set GROQ_API_KEY in .env, then 'make up' or run services individually."
 
 seed: ## Seed / re-seed the demo database (idempotent)
 	cd backend && ../backend/.venv/bin/python ../scripts/seed.py || python ../scripts/seed.py
 
-dev: ## Run backend + frontend + voice locally (needs ollama + chroma running)
+dev: ## Run backend + frontend + voice locally (needs GROQ_API_KEY)
 	@echo "Run these in separate terminals:"
 	@echo "  1) cd backend && .venv/bin/uvicorn app.main:app --reload --port 8000"
 	@echo "  2) cd voice   && uvicorn server:app --reload --port 8080"
 	@echo "  3) cd frontend && npm run dev"
 
-test: ## Run backend unit tests (core, no Ollama needed)
+test: ## Run backend unit tests (core, no Groq key needed)
 	cd backend && (.venv/bin/python -m pytest -q tests/test_store_service.py tests/test_api.py || python -m pytest -q tests/test_store_service.py tests/test_api.py)
 
-test-ai: ## Run RAG + agent tests (needs AI stack / Ollama)
+test-ai: ## Run RAG + agent tests (needs GROQ_API_KEY)
 	cd backend && RUN_AGENT_SMOKE=1 python -m pytest -q
 
 build: ## Build all Docker images
@@ -36,7 +36,7 @@ build: ## Build all Docker images
 
 up: ## Start the full stack (docker compose)
 	$(COMPOSE) up -d
-	@echo "Waiting for services... then run 'make models' to pull the LLM."
+	@echo "Starting... open http://localhost:3000/support when healthy."
 
 down: ## Stop the stack
 	$(COMPOSE) down
@@ -46,7 +46,7 @@ restart: down up ## Restart the stack
 logs: ## Tail logs
 	$(COMPOSE) logs -f --tail=100
 
-models: ## Pull the Ollama model + warm RAG/voice caches
+models: ## Rebuild the RAG index
 	bash scripts/init_models.sh
 
 smoke: ## Run the end-to-end smoke test against the running stack

@@ -22,12 +22,14 @@ export default function AboutPage() {
         <li>Creates return requests and support tickets — but only after you confirm.</li>
         <li>Escalates to a human when you ask, or when it shouldn&apos;t guess.</li>
         <li>Remembers the conversation across both chat and an in-browser voice call.</li>
+        <li>Speaks natural Nepali and English, in the browser or on a phone call.</li>
       </ul>
 
       <h2 className="mt-8 text-xl font-semibold">Open-source stack</h2>
       <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-        Next.js · FastAPI · LangGraph · Ollama (qwen3:4b) · ChromaDB · SQLite · Pipecat with
-        Faster-Whisper STT and Kokoro TTS. No paid AI APIs. Runs with <code>docker compose up</code>.
+        Next.js · FastAPI · LangGraph · Groq (gpt-oss-120b, Whisper) · ChromaDB · SQLite · Pipecat
+        with Edge / Piper voices · Twilio for phone calls. Runs on Groq&apos;s free tier with{" "}
+        <code>docker compose up</code>.
       </p>
 
       <div className="mt-8 flex gap-3">
