@@ -18,7 +18,7 @@ RUN pip install --no-cache-dir -r requirements-pipecat.txt \
     || echo "WARN: pipecat/aiortc not installed — voice service will run in push-to-talk-only mode"
 
 # Piper fallback voice (~20 MB), baked into the image
-RUN python -m piper.download_voices en_US-lessac-low ne_NP-google-medium --data-dir /models_cache/piper \
+RUN python -m piper.download_voices en_US-lessac-low ne_NP-chitwan-medium --data-dir /models_cache/piper \
     || echo "WARN: piper voice not downloaded - TTS fallback unavailable"
 
 COPY voice/ ./

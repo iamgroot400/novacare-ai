@@ -212,7 +212,7 @@ uvicorn app.main:app --reload --port 8000
 cd voice
 python -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt -r requirements-pipecat.txt
-python -m piper.download_voices en_US-lessac-low ne_NP-google-medium --data-dir ./piper
+python -m piper.download_voices en_US-lessac-low ne_NP-chitwan-medium --data-dir ./piper
 export GROQ_API_KEY=... BACKEND_URL=http://localhost:8000 PIPER_DIR=./piper
 uvicorn server:app --reload --port 8080
 

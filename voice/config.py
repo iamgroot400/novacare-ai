@@ -31,7 +31,8 @@ class VoiceConfig:
     groq_tts_model: str = os.getenv("GROQ_TTS_MODEL", "canopylabs/orpheus-v1-english")
     groq_tts_voice: str = os.getenv("GROQ_TTS_VOICE", "autumn")
     piper_voice: str = os.getenv("PIPER_VOICE", "en_US-lessac-low")
-    piper_voice_ne: str = os.getenv("PIPER_VOICE_NE", "ne_NP-google-medium")
+    # chitwan: one consistent speaker; sounded clearly better than the 18-speaker google voice
+    piper_voice_ne: str = os.getenv("PIPER_VOICE_NE", "ne_NP-chitwan-medium")
     edge_voice_ne: str = os.getenv("EDGE_VOICE_NE", "ne-NP-HemkalaNeural")
     edge_voice_en: str = os.getenv("EDGE_VOICE_EN", "en-US-AriaNeural")
     edge_rate: str = os.getenv("EDGE_RATE", "+0%")  # e.g. "-10%" speaks a little slower
