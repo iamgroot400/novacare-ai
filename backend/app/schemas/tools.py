@@ -141,5 +141,6 @@ class GetTicketArgs(BaseModel):
 
 
 class EscalateArgs(BaseModel):
-    conversation_id: str = Field(..., min_length=4, max_length=40)
+    # No conversation_id: the tool reads it from the run context. Asking the model for it made
+    # it invent ids like "3", which Groq rejects (400 tool_use_failed) and the turn failed.
     reason: str = Field(..., min_length=3, max_length=500)

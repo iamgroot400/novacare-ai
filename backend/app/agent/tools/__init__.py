@@ -218,7 +218,7 @@ def _create_support_ticket(subject: str, description: str, customer_id: str | No
     })
 
 
-def _escalate_to_human(conversation_id: str, reason: str) -> str:
+def _escalate_to_human(reason: str) -> str:
     ctx = current()
     ctx.emitter.escalation(f"Escalating to a human specialist: {reason}", meta={"reason": reason})
     with session_scope() as db:
@@ -241,7 +241,7 @@ def _escalate_to_human(conversation_id: str, reason: str) -> str:
 
 # ─── tool registry ─────────────────────────────────────────────────────
 def build_tools() -> list[StructuredTool]:
-    return [
+    tools = [
         StructuredTool.from_function(
             _search_knowledge_base, name="search_knowledge_base",
             description="Search NovaStore policy and troubleshooting documentation "
@@ -302,6 +302,11 @@ def build_tools() -> list[StructuredTool]:
             args_schema=EscalateArgs,
         ),
     ]
+    # Bad arguments (e.g. a malformed order id) go back to the model as an error it can fix,
+    # instead of raising and failing the whole turn with "Sorry, I ran into a problem".
+    for t in tools:
+        t.handle_validation_error = True
+    return tools
 
 
 READ_TOOLS = {

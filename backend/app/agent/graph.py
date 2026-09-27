@@ -33,11 +33,13 @@ def _build_llm():
     # Groq's free tier caps each model at 200k tokens/day; once the main model is out, every
     # turn failed instantly. Each model has its own quota, so retry the turn on the fallback.
     llm = _groq(settings.groq_model)
+    # BadRequestError too: Groq rejects a malformed tool call (400 "tool_use_failed") and a
+    # second model usually gets it right, instead of the whole turn failing.
     if settings.groq_fallback_model:
-        from groq import RateLimitError
+        from groq import BadRequestError, RateLimitError
 
         llm = llm.with_fallbacks([_groq(settings.groq_fallback_model)],
-                                 exceptions_to_handle=(RateLimitError,))
+                                 exceptions_to_handle=(RateLimitError, BadRequestError))
     return llm
 
 
